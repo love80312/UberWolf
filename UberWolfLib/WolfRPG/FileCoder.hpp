@@ -103,9 +103,9 @@ private:
 
 class FileCoder
 {
-	static constexpr std::size_t CRYPT_HEADER_SIZE = 10;
-
 public:
+	static constexpr uint32_t CRYPT_HEADER_SIZE = 10;
+
 	enum class Mode
 	{
 		READ,
@@ -116,8 +116,7 @@ public:
 	// Disable Copy/Move constructor
 	DISABLE_COPY_MOVE(FileCoder)
 
-	FileCoder(const std::filesystem::path& filePath, const Mode& mode, const WolfFileType& fileType, const SeedIncides& seedIndices = {}, const Bytes& cryptHeader = {}) :
-		m_cryptHeader(cryptHeader),
+	FileCoder(const std::filesystem::path& filePath, const Mode& mode, const WolfFileType& fileType, const SeedIncides& seedIndices = {}) :
 		m_mode(mode),
 		m_seedIndices(seedIndices),
 		m_fileType(fileType)
@@ -134,18 +133,12 @@ public:
 
 			m_writer.Open(filePath);
 
-			if (!cryptHeader.empty())
-				Write(cryptHeader);
-			else
-			{
-				if (fileType != WolfFileType::Project && fileType != WolfFileType::Map)
-					WriteByte(0);
-			}
+			if (fileType != WolfFileType::Project && fileType != WolfFileType::Map)
+				WriteByte(0);
 		}
 	}
 
-	FileCoder(const Bytes& buffer, const Mode& mode, const WolfFileType& fileType, const SeedIncides& seedIndices = {}, const Bytes& cryptHeader = {}) :
-		m_cryptHeader(cryptHeader),
+	FileCoder(const Bytes& buffer, const Mode& mode, const WolfFileType& fileType, const SeedIncides& seedIndices = {}) :
 		m_mode(mode),
 		m_seedIndices(seedIndices),
 		m_fileType(fileType)
@@ -216,14 +209,9 @@ public:
 		return m_reader.GetSize();
 	}
 
-	const Bytes& GetCryptHeader() const
+	bool WasEncrypted() const
 	{
-		return m_cryptHeader;
-	}
-
-	bool IsEncrypted() const
-	{
-		return !m_cryptHeader.empty();
+		return m_wasEncrypted;
 	}
 
 	void Seek(const int32_t& pos)
@@ -458,10 +446,10 @@ private:
 
 	void cryptProj(Bytes& data)
 	{
-		srand(s_projKey);
+		wolf::crypt::rng::msvc_srand(s_projKey);
 
 		for (uint8_t& byte : data)
-			byte ^= static_cast<uint8_t>(rand());
+			byte ^= static_cast<uint8_t>(wolf::crypt::rng::msvc_rand());
 	}
 
 #ifdef _WIN32
@@ -490,52 +478,52 @@ private:
 #else
 	static tString sjis2utf8(const Bytes& sjis)
 	{
-		iconv_t cd = iconv_open("UTF-8", "SHIFT-JIS");
+		iconv_t cd = iconv_open("WCHAR_T", "SHIFT-JIS");
 		if (cd == (iconv_t)-1)
 			throw WolfRPGException("iconv_open failed");
 
-		// Allocate output buffer (UTF-8 can be up to 4 bytes per character)
 		std::size_t inBytesLeft  = sjis.size();
-		std::size_t outBytesLeft = inBytesLeft * 4;
-		std::vector<char> output(outBytesLeft);
+		std::size_t outBytesLeft = inBytesLeft * sizeof(wchar_t);
+
+		std::wstring output(outBytesLeft / sizeof(wchar_t), L'\0');
 
 		char* pInBuf  = const_cast<char*>(reinterpret_cast<const char*>(sjis.data()));
-		char* pOutBuf = output.data();
+		char* pOutBuf = reinterpret_cast<char*>(output.data());
 
 		size_t result = iconv(cd, &pInBuf, &inBytesLeft, &pOutBuf, &outBytesLeft);
-		if (result == (std::size_t)-1)
+		if (result == static_cast<std::size_t>(-1))
 		{
 			iconv_close(cd);
 			throw WolfRPGException("iconv conversion failed");
 		}
 
-		std::string converted(output.data(), output.size() - outBytesLeft);
-		std::wstring r = ToUTF16(converted);
+		// Resize to actual number of wchar_t elements present
+		size_t bytesWritten = output.size() * sizeof(wchar_t) - outBytesLeft;
+		output.resize(bytesWritten / sizeof(wchar_t));
+		output.pop_back(); // Remove null terminator added by iconv
 
 		iconv_close(cd);
-		return r;
+		return output;
 	}
 
 	static Bytes utf82sjis(const tString& utf8)
 	{
-		iconv_t cd = iconv_open("SHIFT-JIS", "UTF-8");
+		iconv_t cd = iconv_open("SHIFT-JIS", "WCHAR_T");
 		if (cd == (iconv_t)-1)
 			throw WolfRPGException("iconv_open failed");
 
-		std::string u = ToUTF8(utf8);
+		std::size_t inBytesLeft  = utf8.size() * sizeof(wchar_t);
+		std::size_t outBytesLeft = inBytesLeft * 4; // worst case size
+		std::vector<char> output(outBytesLeft, 0);
 
-		std::size_t inBytesLeft  = u.size();
-		std::size_t outBytesLeft = inBytesLeft * 2; // SJIS max ~2 bytes per char
-		std::vector<char> output(outBytesLeft);
-
-		char* pInBuf  = const_cast<char*>(u.data());
+		char* pInBuf  = reinterpret_cast<char*>(const_cast<wchar_t*>(utf8.data()));
 		char* pOutBuf = output.data();
 
 		while (inBytesLeft > 0)
 		{
 			std::size_t result = iconv(cd, &pInBuf, &inBytesLeft, &pOutBuf, &outBytesLeft);
 
-			if (result == (std::size_t)-1)
+			if (result == static_cast<std::size_t>(-1))
 			{
 				if (errno == E2BIG)
 				{
@@ -553,8 +541,10 @@ private:
 			}
 		}
 
-		Bytes converted;
-		converted.assign(output.data(), output.data() + (output.size() - outBytesLeft));
+		Bytes converted(output.data(), output.data() + (output.size() - outBytesLeft));
+
+		// Add null terminator
+		converted.push_back(0x0);
 
 		iconv_close(cd);
 		return converted;
@@ -569,14 +559,14 @@ private:
 		Bytes header(CRYPT_HEADER_SIZE);
 		header[0] = indicator;
 
-		for (int i = 1; i < CRYPT_HEADER_SIZE; i++)
+		for (uint32_t i = 1; i < CRYPT_HEADER_SIZE; i++)
 			header[i] = ReadByte();
 
 		SeedIncides seeds = { 0, 0, 0 };
 		for (size_t i = 0; i < m_seedIndices.size(); i++)
 			seeds[i] = header[m_seedIndices[i]];
 
-		m_cryptHeader = header;
+		m_wasEncrypted = true;
 
 		Bytes data = Read();
 		cryptDatV1(data, seeds);
@@ -595,6 +585,9 @@ private:
 		}
 
 		decryptV2_0(indicator);
+
+		m_wasEncrypted = true;
+		s_isUTF8       = true;
 
 		// Skip 5 bytes to get to the key size
 		m_reader.Skip(5);
@@ -620,12 +613,13 @@ private:
 		Bytes data = Read();
 		cryptDatV2(data);
 
-		m_cryptHeader = Bytes(data.begin(), data.begin() + 143);
+		m_wasEncrypted = true;
+		s_isUTF8       = true;
 
 		m_reader.InitData(data);
 		m_reader.Skip(143);
 
-		s_projKey = m_cryptHeader[0x14];
+		s_projKey = data[0x14];
 	}
 
 	void decryptV3_5()
@@ -634,6 +628,9 @@ private:
 		Bytes data = Read();
 		if (!wolf::crypt::datadecrypt::v3_5::decryptData(data, m_fileType))
 			throw WolfRPGException(ERROR_TAG + "Failed to decrypt ProV3 data.");
+
+		// wasEncrypted is not set here because the decryption function adds the required headers
+		s_isUTF8 = true;
 
 		m_reader.InitData(data);
 		// ¯\_(ツ)_/¯
@@ -703,7 +700,7 @@ private:
 	}
 
 private:
-	Bytes m_cryptHeader = {};
+	bool m_wasEncrypted = false;
 	Mode m_mode;
 	SeedIncides m_seedIndices = {};
 	WolfFileType m_fileType;

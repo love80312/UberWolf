@@ -74,7 +74,7 @@ public:
 protected:
 	bool load(FileCoder& coder) override
 	{
-		m_oldSize = coder.GetSize() + static_cast<uint32_t>(m_cryptHeader.size()) - 1;
+		m_oldSize = coder.GetSize() + static_cast<uint32_t>(FileCoder::CRYPT_HEADER_SIZE) - 1;
 
 		m_unknown1    = coder.ReadByteArray();
 		m_stringCount = coder.ReadInt();
@@ -86,7 +86,7 @@ protected:
 		m_magicString = coder.ReadString();
 
 		if (m_magicString != MAGIC_STRING)
-			throw WolfRPGException(ERROR_TAGW + L"Invalid magic string: \"" + m_magicString + L"\" expected: \"" + MAGIC_STRING + L"\"");
+			throw WolfRPGException(std::format(L"{}Invalid magic string: \"{}\" expected: \"{}\"", ERROR_TAGW, m_magicString, MAGIC_STRING));
 
 		// String 2
 		m_decryptKey = coder.ReadByteArray();
