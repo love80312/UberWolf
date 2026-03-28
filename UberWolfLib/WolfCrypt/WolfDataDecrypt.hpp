@@ -42,6 +42,21 @@
 
 namespace wolf::crypt::datadecrypt
 {
+namespace v2_0
+{
+inline void decryptData(std::vector<uint8_t> &data, const SeedIncides &seeds)
+{
+	static constexpr std::size_t DECRYPT_INTERVALS[] = { 1, 2, 5 };
+	for (std::size_t i = 0; i < seeds.size(); i++)
+	{
+		srand(seeds[i]);
+
+		for (std::size_t j = 0; j < data.size(); j += DECRYPT_INTERVALS[i])
+			data[j] ^= static_cast<uint8_t>(rand() >> 12);
+	}
+}
+} // namespace v2_0
+
 namespace v3_1
 {
 
@@ -66,7 +81,7 @@ inline void rngDecrypt(std::vector<uint8_t> &data, const uint32_t &seed)
 		data[i] ^= rnds[i % NUM_RNDS];
 }
 
-inline void initCrypt(CryptData &cd, const std::array<uint32_t, 3> &seedIndices)
+inline void initCrypt(CryptData &cd, const SeedIncides &seedIndices)
 {
 	uint32_t fileSize = static_cast<uint32_t>(cd.gameDatBytes.size());
 
@@ -87,7 +102,7 @@ inline void initCrypt(CryptData &cd, const std::array<uint32_t, 3> &seedIndices)
 	cd.seed2 = seed;
 }
 
-inline CryptData decryptData(const std::vector<uint8_t> &bytes, const std::array<uint32_t, 3> &seedIndices)
+inline CryptData decryptData(const std::vector<uint8_t> &bytes, const SeedIncides &seedIndices)
 {
 	constexpr uint32_t AES_DATA_OFFSET = 20;
 
@@ -133,7 +148,7 @@ const std::map<WolfFileType, ProMagic> PRO_MAGIC = {
 	{ WolfFileType::None, { "", {} } }
 };
 
-inline void decryptProV3P1(std::vector<uint8_t> &data, const std::array<uint8_t, 3> seedIdx)
+inline void decryptProV3P1(std::vector<uint8_t> &data, const SeedIncides seedIdx)
 {
 	const uint32_t seed = (0xB << 24) | (data[seedIdx[0]] << 16) | (data[seedIdx[1]] << 8) | data[seedIdx[2]];
 	int32_t rn          = xorshift32(seed);
@@ -165,7 +180,7 @@ inline bool decryptData(std::vector<uint8_t> &buffer, const WolfFileType &datTyp
 		return false;
 	}
 
-	std::array<uint8_t, 3> seedIdx = { 0, 3, 9 }; // Default idx for everything except Game.dat
+	SeedIncides seedIdx = { 0, 3, 9 }; // Default idx for everything except Game.dat
 
 	if (datType == WolfFileType::GameDat)
 		seedIdx = { 0, 8, 6 };

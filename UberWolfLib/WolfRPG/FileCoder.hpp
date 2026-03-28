@@ -103,8 +103,7 @@ private:
 
 class FileCoder
 {
-	static constexpr std::size_t CRYPT_HEADER_SIZE   = 10;
-	static constexpr std::size_t DECRYPT_INTERVALS[] = { 1, 2, 5 };
+	static constexpr std::size_t CRYPT_HEADER_SIZE = 10;
 
 public:
 	enum class Mode
@@ -117,7 +116,7 @@ public:
 	// Disable Copy/Move constructor
 	DISABLE_COPY_MOVE(FileCoder)
 
-	FileCoder(const std::filesystem::path& filePath, const Mode& mode, const WolfFileType& fileType, const uInts& seedIndices = uInts(), const Bytes& cryptHeader = Bytes()) :
+	FileCoder(const std::filesystem::path& filePath, const Mode& mode, const WolfFileType& fileType, const SeedIncides& seedIndices = {}, const Bytes& cryptHeader = {}) :
 		m_cryptHeader(cryptHeader),
 		m_mode(mode),
 		m_seedIndices(seedIndices),
@@ -141,13 +140,13 @@ public:
 			}
 			else
 			{
-				if (!m_seedIndices.empty())
+				if (!m_seedIndices.empty() && fileType != WolfFileType::Project && fileType != WolfFileType::Map)
 					WriteByte(0);
 			}
 		}
 	}
 
-	FileCoder(const Bytes& buffer, const Mode& mode, const WolfFileType& fileType, const uInts& seedIndices = uInts(), const Bytes& cryptHeader = Bytes()) :
+	FileCoder(const Bytes& buffer, const Mode& mode, const WolfFileType& fileType, const SeedIncides& seedIndices = {}, const Bytes& cryptHeader = {}) :
 		m_cryptHeader(cryptHeader),
 		m_mode(mode),
 		m_seedIndices(seedIndices),
@@ -448,24 +447,14 @@ public:
 	}
 
 private:
-	void cryptDatV1(Bytes& data, const Bytes& seeds)
+	void cryptDatV1(Bytes& data, const SeedIncides& seeds)
 	{
-		for (std::size_t i = 0; i < seeds.size(); i++)
-		{
-			srand(seeds[i]);
-
-			for (std::size_t j = 0; j < data.size(); j += DECRYPT_INTERVALS[i])
-				data[j] ^= static_cast<uint8_t>(rand() >> 12);
-		}
+		wolf::crypt::datadecrypt::v2_0::decryptData(data, seeds);
 	}
 
 	void cryptDatV2(Bytes& data)
 	{
-		std::array<uint32_t, 3> seedIndices = { 0, 3, 9 }; // Default seed indices for everything except GameDat
-		if (m_seedIndices.size() >= 3)
-			seedIndices = { m_seedIndices[0], m_seedIndices[1], m_seedIndices[2] };
-
-		wolf::crypt::CryptData cd = wolf::crypt::datadecrypt::v3_3::decryptData(data, seedIndices);
+		wolf::crypt::CryptData cd = wolf::crypt::datadecrypt::v3_3::decryptData(data, m_seedIndices);
 		data.assign(cd.gameDatBytes.begin(), cd.gameDatBytes.end());
 	}
 
@@ -585,9 +574,9 @@ private:
 		for (int i = 1; i < CRYPT_HEADER_SIZE; i++)
 			header[i] = ReadByte();
 
-		Bytes seeds;
-		for (size_t i = 0; i < m_seedIndices.size(); i++)
-			seeds.push_back(header[m_seedIndices[i]]);
+		SeedIncides seeds = { 0, 0, 0 };
+		for (size_t i = 0; i < m_seedIndices.size() && i < seeds.size(); i++)
+			seeds[i] = header[m_seedIndices[i]];
 
 		m_cryptHeader = header;
 
@@ -627,7 +616,6 @@ private:
 
 		m_reader.Skip(keySize - 1);
 	}
-
 
 	void decryptV3_3()
 	{
@@ -719,7 +707,7 @@ private:
 private:
 	Bytes m_cryptHeader = {};
 	Mode m_mode;
-	uInts m_seedIndices = {};
+	SeedIncides m_seedIndices = {};
 	WolfFileType m_fileType;
 
 	FileReader m_reader = {};

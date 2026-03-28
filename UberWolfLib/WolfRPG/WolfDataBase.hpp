@@ -36,7 +36,7 @@
 class WolfDataBase
 {
 public:
-	WolfDataBase(const std::filesystem::path& filePath, const MagicNumber& magic, const WolfFileType& fileType, const bool& saveUncompressed = false, const uInts& seedIndices = {}) :
+	WolfDataBase(const std::filesystem::path& filePath, const MagicNumber& magic, const WolfFileType& fileType, const bool& saveUncompressed = false, const SeedIncides& seedIndices = {}) :
 		m_filePath(filePath),
 		m_magic(magic),
 		m_fileType(fileType),
@@ -183,7 +183,7 @@ protected:
 	MagicNumber m_magic;
 	bool m_saveUncompressed;
 	WolfFileType m_fileType;
-	uInts m_seedIndices = {};
+	SeedIncides m_seedIndices = {};
 
 	Bytes m_cryptHeader = {};
 

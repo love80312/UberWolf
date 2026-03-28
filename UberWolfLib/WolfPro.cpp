@@ -54,11 +54,9 @@ static const tString BASIC_DATA_FOLDER = TEXT("BasicData");
 namespace ProtKey
 {
 static const uint32_t KEY_SEED          = 0x5D93EBF;
-static const uint32_t SEED_COUNT        = 3;
 static const std::size_t START_OFFSET   = 0xA;
 static const std::size_t KEY_LEN_OFFSET = START_OFFSET + 5;
 static const std::size_t KEY_OFFSET     = KEY_LEN_OFFSET + 4;
-static const uint32_t SHIFT             = 12;
 
 static const std::vector<uint8_t> DEC_START = { 0x00, 0x57, 0x00, 0x00, 0x4F, 0x4C, 0x55, 0x46, 0x4D, 0x00 };
 
@@ -484,7 +482,7 @@ bool WolfPro::writeFile(const tString& filePath, std::vector<uint8_t>& bytes) co
 	return true;
 }
 
-std::vector<uint8_t> WolfPro::decrypt(const tString& filePath, const std::array<uint8_t, 3> seedIdx) const
+std::vector<uint8_t> WolfPro::decrypt(const tString& filePath, const SeedIncides seedIdx) const
 {
 	uint32_t fileSize;
 	std::vector<uint8_t> bytes;
@@ -494,9 +492,9 @@ std::vector<uint8_t> WolfPro::decrypt(const tString& filePath, const std::array<
 	return decrypt(bytes, seedIdx);
 }
 
-std::vector<uint8_t> WolfPro::decrypt(std::vector<uint8_t>& bytes, const std::array<uint8_t, 3> seedIdx) const
+std::vector<uint8_t> WolfPro::decrypt(std::vector<uint8_t>& bytes, const SeedIncides seedIdx) const
 {
-	std::array<uint8_t, ProtKey::SEED_COUNT> seeds;
+	SeedIncides seeds;
 #ifdef PRINT_DEBUG
 	INFO_LOG << std::format(TEXT("Decrypting: {} ..."), filePath) << std::endl;
 #endif
@@ -512,21 +510,7 @@ std::vector<uint8_t> WolfPro::decrypt(std::vector<uint8_t>& bytes, const std::ar
 	INFO_LOG << std::endl;
 #endif
 
-	for (std::size_t i = 0; i < seeds.size(); i++)
-	{
-		srand(seeds[i]);
-
-		std::size_t inc = 1;
-
-		if (i == 1) inc = 2;
-		if (i == 2) inc = 5;
-
-		if (ProtKey::START_OFFSET < bytes.size())
-		{
-			for (std::size_t j = ProtKey::START_OFFSET; j < bytes.size(); j += inc)
-				bytes[j] ^= static_cast<uint8_t>(rand() >> ProtKey::SHIFT);
-		}
-	}
+	wolf::crypt::datadecrypt::v2_0::decryptData(bytes, seeds);
 
 	return bytes;
 }
